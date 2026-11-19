@@ -1,0 +1,41 @@
+name: Build Unsigned iOS Safari IPA
+
+on:
+  push:
+    branches: [main, master, "feat/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build unsigned Ask Gemini Safari Extension IPA
+        run: |
+          chmod +x scripts/build_unsigned_ipa.sh
+          ./scripts/build_unsigned_ipa.sh
+
+      - name: Upload Unsigned IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AskGemini-Safari-iOS-unsigned
+          path: dist/AskGemini-Safari-iOS-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Publish GitHub Release with Unsigned IPA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/AskGemini-Safari-iOS-unsigned.ipa --clobber
+          else
+            gh release create "$TAG" dist/AskGemini-Safari-iOS-unsigned.ipa \
+              --title "Ask Gemini Safari iOS ($TAG) — Unsigned IPA" \
+              --notes "Unsigned iOS Safari Web Extension IPA ready for sideloading (SideStore / AltStore with **Keep App Extensions**, Feather, Sideloadly, or TrollStore). Uses your signed-in Safari Gemini subscription with no API key."
+          fi
