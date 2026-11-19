@@ -32,6 +32,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v1.0.${{ github.run_number }}"
-          gh release create "$TAG" dist/AskGemini-Safari-iOS-unsigned.ipa \
-            --title "Ask Gemini Safari iOS ($TAG) — Unsigned IPA" \
-            --notes "Unsigned iOS Safari Web Extension IPA ready for sideloading (SideStore / AltStore with **Keep App Extensions**, Feather, Sideloadly, or TrollStore). Uses your signed-in Safari Gemini subscription with no API key."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/AskGemini-Safari-iOS-unsigned.ipa --clobber
+          else
+            gh release create "$TAG" dist/AskGemini-Safari-iOS-unsigned.ipa \
+              --title "Ask Gemini Safari iOS ($TAG) — Unsigned IPA" \
+              --notes "Unsigned iOS Safari Web Extension IPA ready for sideloading (SideStore / AltStore with **Keep App Extensions**, Feather, Sideloadly, or TrollStore). Uses your signed-in Safari Gemini subscription with no API key."
+          fi

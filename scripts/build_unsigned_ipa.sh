@@ -65,6 +65,27 @@ if [[ -z "$XCODEPROJ" ]]; then
 fi
 echo "==> Found project: $XCODEPROJ"
 
+echo "==> Normalizing bundle identifiers in project.pbxproj..."
+python3 - "$XCODEPROJ/project.pbxproj" <<'PY'
+import pathlib, re, sys
+
+pbxproj = pathlib.Path(sys.argv[1])
+text = pbxproj.read_text(encoding="utf-8")
+
+def fix_bundle_id(match):
+    prefix, val, suffix = match.group(1), match.group(2), match.group(3)
+    if "Extension" in val:
+        return f"{prefix}com.askgemini.safari.ios.Extension{suffix}"
+    return f"{prefix}com.askgemini.safari.ios{suffix}"
+
+new_text = re.sub(r'(PRODUCT_BUNDLE_IDENTIFIER\s*=\s*)([^;\n]+)(;)', fix_bundle_id, text)
+pbxproj.write_text(new_text, encoding="utf-8")
+
+for line in new_text.splitlines():
+    if "PRODUCT_BUNDLE_IDENTIFIER" in line:
+        print("  ", line.strip())
+PY
+
 IOS_SCHEME="$(xcodebuild -project "$XCODEPROJ" -list -json | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
@@ -111,9 +132,20 @@ if [[ -z "$APPEX_BUNDLE" || ! -d "$APPEX_BUNDLE" ]]; then
 fi
 echo "==> Verified embedded Safari extension: $APPEX_BUNDLE"
 
-echo "==> Applying clean ad-hoc signatures (inner-most .appex first, then outer .app)..."
+echo "==> Applying clean ad-hoc signatures (embedded frameworks, inner .appex, then outer .app)..."
 rm -rf "$APP_BUNDLE/_CodeSignature" "$APPEX_BUNDLE/_CodeSignature"
+if [[ -d "$APPEX_BUNDLE/Frameworks" ]]; then
+  while IFS= read -r -d '' fw; do
+    codesign --force --sign - --timestamp=none "$fw"
+  done < <(find "$APPEX_BUNDLE/Frameworks" -maxdepth 1 \( -name "*.dylib" -o -name "*.framework" \) -print0)
+fi
 codesign --force --sign - --timestamp=none "$APPEX_BUNDLE"
+
+if [[ -d "$APP_BUNDLE/Frameworks" ]]; then
+  while IFS= read -r -d '' fw; do
+    codesign --force --sign - --timestamp=none "$fw"
+  done < <(find "$APP_BUNDLE/Frameworks" -maxdepth 1 \( -name "*.dylib" -o -name "*.framework" \) -print0)
+fi
 codesign --force --sign - --timestamp=none "$APP_BUNDLE"
 
 echo "==> Packaging unsigned IPA..."
@@ -129,4 +161,4 @@ IPA_PATH="$DIST_DIR/AskGemini-Safari-iOS-unsigned.ipa"
 
 echo "==> Successfully built unsigned IPA:"
 ls -lh "$IPA_PATH"
-unzip -l "$IPA_PATH" | head -n 40
+unzip -l "$IPA_PATH" | head -n 40 || true
